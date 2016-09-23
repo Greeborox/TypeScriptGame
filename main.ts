@@ -14,7 +14,7 @@ interface actor {
 interface istate {
   created:boolean;
   readyToChange:boolean;
-  nextState:Object;
+  nextState:boolean;
   actors:actor[];
   create():void;
   update(delta:number):void;
@@ -24,23 +24,30 @@ interface istate {
 
 class State implements istate {
   constructor(private ctx:CanvasRenderingContext2D,private pressedKeys:Object){};
+  public spacePressed = false;
   public created = false;
+  public nextState = false;
   public readyToChange = false;
-  public nextState = undefined;
   public actors:actor[] = []
   public create() {
     console.log("state created");
     this.created = true;
+    this.nextState = false;
   }
   public update(delta:number) {
     for(var i:number = 0; i < this.actors.length; i++){
       this.actors[i].update(delta);
     }
-    if(this.nextState != undefined){
+    if(this.nextState){
       this.cleanUp();
     }
     if(this.pressedKeys[32]){
-      this.nextState = true;
+      if(!this.spacePressed){
+        this.nextState = true;
+        this.spacePressed = true;
+      }
+    } else {
+      this.spacePressed = false;
     }
   }
   public draw() {
@@ -55,8 +62,8 @@ class State implements istate {
       delete this.actors[i]
     }
     this.actors = [];
-    this.nextState = undefined;
     this.readyToChange = true;
+    this.nextState = false;
   }
 }
 
@@ -105,8 +112,13 @@ window.onload = () => {
     } else if(currState.readyToChange){
       currState.readyToChange = false;
       console.log(currState);
-      currState = redState;
-      currState.actors.push(new Rect(10,10,pressedKeys,"red"));
+      if(currStateKey === "mainState"){
+        currStateKey = "redState";
+        currState.actors.push(new Rect(10,10,pressedKeys,"red"));
+      } else {
+        currStateKey = "mainState";
+        currState.actors.push(new Rect(10,10,pressedKeys,"white"));
+      }
       requestAnimationFrame(mainLoop);
     } else {
       var numUpdateSteps:number = 0;
@@ -139,7 +151,12 @@ window.onload = () => {
 
   var mainState = new State(ctx,pressedKeys);
   var redState = new State(ctx,pressedKeys);
-  currState = mainState;
+  var stateMap:Object = {
+    "mainState": mainState,
+    "redState": redState
+  }
+  var currStateKey:string = "mainState"
+  currState = stateMap[currStateKey];
   mainState.actors.push(new Rect(10,10,pressedKeys));
   document.addEventListener('keydown', keyboardDown);
   document.addEventListener('keyup', keyboardUp);
