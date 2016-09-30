@@ -5,6 +5,7 @@ interface vector {
 
 interface actor {
   velocity: vector;
+  movable: boolean;
   x:number;
   y:number;
   update(delta:number):void;
@@ -22,8 +23,13 @@ interface istate {
   cleanUp():void;
 }
 
+interface map {
+  mapData: number[][];
+  draw(ctx:CanvasRenderingContext2D):void;
+}
+
 class State implements istate {
-  constructor(private ctx:CanvasRenderingContext2D,private pressedKeys:Object){};
+  constructor(private ctx:CanvasRenderingContext2D,private pressedKeys:Object,private level?:Map){};
   public spacePressed = false;
   public created = false;
   public nextState = false;
@@ -31,12 +37,87 @@ class State implements istate {
   public actors:actor[] = []
   public create() {
     console.log("state created");
+    console.log(this.level);
     this.created = true;
     this.nextState = false;
+  }
+  private checkCollision(r1,r2){
+    let r1centerx = r1.x+(r1.size/2);
+    let r1centery = r1.y+(r1.size/2);
+    let r2centerx = r2.x+(r2.size/2);
+    let r2centery = r2.y+(r2.size/2);
+    var vx = r1centerx - r2centerx;
+    var vy = r1centery - r2centery;
+    var combinedHalfWidths = r1.size/2 + r2.size/2;
+    var combinedHalfHeights = r1.size/2 + r2.size/2;
+    if(Math.abs(vx) < combinedHalfWidths){
+      if(Math.abs(vy) < combinedHalfHeights){
+        var overlapX = combinedHalfWidths - Math.abs(vx);
+        var overlapY = combinedHalfHeights - Math.abs(vy);
+        if(overlapX >= overlapY) {
+          if(vy > 0) {
+            r1.y = r1.y + overlapY;
+          } else {
+            r1.y = r1.y - overlapY;
+          }
+        } else {
+          if(vx > 0) {
+            r1.x = r1.x + overlapX;
+          } else {
+            r1.x = r1.x - overlapX;
+          }
+        }
+      }
+    }
+  }
+  public checkOverlap(entity1,entity2){
+    return !(entity1.x + entity1.size -1 < entity2.x ||
+               entity2.x + entity2.size -1 < entity1.x ||
+               entity1.y + entity1.size -1 < entity2.y ||
+               entity2.y + entity2.size -1 < entity1.y);
   }
   public update(delta:number) {
     for(var i:number = 0; i < this.actors.length; i++){
       this.actors[i].update(delta);
+    }
+    if(this.level){
+      let level = this.level.mapData;
+      for (let i = 0; i < level.length; i++) {
+        for (let j = 0; j < level[i].length; j++) {
+          if(level[i][j]){
+            var wallColl = {
+              size: 20,
+              x: 20*j,
+              y: 20*i,
+            }
+            this.checkCollision(this.actors[0],wallColl)
+            if(this.actors.length > 1){
+              for (let k = 1; k < this.actors.length; k++) {
+                if(this.checkOverlap(this.actors[k], wallColl)){
+                  if(this.checkOverlap(this.actors[k], this.actors[0])){
+                    this.actors[k].movable = false;
+                  } else {
+                    this.actors[k].movable = true;
+                  }
+                }
+                this.checkCollision(this.actors[k], wallColl);
+              }
+            }
+          }
+        }
+      }
+      if(this.actors.length > 1){
+        for (let i = 1; i < this.actors.length; i++) {
+          if(this.actors[i].movable){
+            this.checkCollision(this.actors[i], this.actors[0]);
+          } else {
+            this.checkCollision(this.actors[0], this.actors[i]);
+          }
+          if(!this.checkOverlap(this.actors[i], this.actors[0])){
+            this.actors[i].movable = true;
+          }
+        }
+      }
     }
     if(this.nextState){
       this.cleanUp();
@@ -51,6 +132,9 @@ class State implements istate {
     }
   }
   public draw() {
+    if(this.level){
+      this.level.draw(this.ctx);
+    }
     for(var i:number = 0; i < this.actors.length; i++){
       this.actors[i].draw(this.ctx);
     }
@@ -67,9 +151,26 @@ class State implements istate {
   }
 }
 
+class Map implements map {
+  constructor (public size:number, public mapData:number[][]){}
+  public draw(ctx):void{
+    for (let i = 0; i < this.mapData.length; i++) {
+        for (let j = 0; j < this.mapData[i].length; j++) {
+          if(this.mapData[i][j]){
+            ctx.save();
+            ctx.fillStyle = "gray";
+            ctx.fillRect(this.size*j, this.size*i, this.size, this.size);
+            ctx.restore();
+          }
+        }
+    }
+  }
+}
+
 class Rect implements actor {
-  constructor(public x:number, public y:number, public keyObj:Object, private color:string = "white"){}
+  constructor(public x:number, public y:number, public size:number, public keyObj:Object, private color:string = "white"){}
   public velocity = {x:0,y:0}
+  public movable = true;
   public update(delta:number):void {
     if(this.keyObj['39']){
       this.velocity.x = 0.08;
@@ -91,7 +192,22 @@ class Rect implements actor {
   public draw(ctx):void{
     ctx.save();
     ctx.fillStyle = this.color;
-    ctx.fillRect(this.x, this.y, 40, 40);
+    ctx.fillRect(this.x, this.y, this.size, this.size);
+    ctx.restore();
+  }
+}
+
+class Box implements actor {
+  constructor(public x:number, public y:number, public size:number){}
+  public velocity = {x:0,y:0}
+  public movable = true;;
+  public update(delta:number):void {
+
+  }
+  public draw(ctx):void{
+    ctx.save();
+    ctx.fillStyle = "purple"
+    ctx.fillRect(this.x, this.y, this.size, this.size);
     ctx.restore();
   }
 }
@@ -99,11 +215,43 @@ class Rect implements actor {
 window.onload = () => {
   var canvas:HTMLCanvasElement = <HTMLCanvasElement>document.getElementById("canvas");
   var ctx:CanvasRenderingContext2D = canvas.getContext("2d");
+  var tileSize:number = 20;
   var lastFrameTimeMs:number = 0;
   var delta:number = 0;
   var timestep:number = 1000/60;
   var currState:State;
-  var pressedKeys = {};
+  var pressedKeys:Object = {};
+  var levelData =[[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,1,1,1,1,1,0,0,0,1,1,1,1,1,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+                  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]];
+  var level = new Map(tileSize, levelData);
+  var mainState = new State(ctx,pressedKeys,level);
+  var redState = new State(ctx,pressedKeys);
+  var stateMap:Object = {
+    "mainState": mainState,
+    "redState": redState
+  }
+  var currStateKey:string = "mainState";
+  var keyboardDown = (event:KeyboardEvent) => {
+    pressedKeys[event.keyCode] = true;
+  }
+  var keyboardUp = (event:KeyboardEvent) => {
+    if(pressedKeys[event.keyCode]){
+      delete pressedKeys[event.keyCode]
+    };
+  }
 
   function mainLoop(timestamp) {
     if(!currState.created && !currState.readyToChange){
@@ -111,13 +259,15 @@ window.onload = () => {
       requestAnimationFrame(mainLoop);
     } else if(currState.readyToChange){
       currState.readyToChange = false;
-      console.log(currState);
       if(currStateKey === "mainState"){
         currStateKey = "redState";
-        currState.actors.push(new Rect(10,10,pressedKeys,"red"));
+        currState = stateMap[currStateKey];
+        currState.actors.push(new Rect(tileSize,tileSize,tileSize,pressedKeys,"red"));
+        currState.actors.push(new Box(tileSize*2,tileSize*1,tileSize));
       } else {
         currStateKey = "mainState";
-        currState.actors.push(new Rect(10,10,pressedKeys,"white"));
+        currState = stateMap[currStateKey];
+        currState.actors.push(new Rect(tileSize,tileSize,tileSize,pressedKeys,"white"));
       }
       requestAnimationFrame(mainLoop);
     } else {
@@ -138,26 +288,9 @@ window.onload = () => {
     }
   }
 
-  var keyboardDown = (event: KeyboardEvent) => {
-    pressedKeys[event.keyCode] = true;
-    console.log(event.keyCode);
-  }
-
-  var keyboardUp = (event: KeyboardEvent) => {
-    if(pressedKeys[event.keyCode]){
-      delete pressedKeys[event.keyCode]
-    };
-  }
-
-  var mainState = new State(ctx,pressedKeys);
-  var redState = new State(ctx,pressedKeys);
-  var stateMap:Object = {
-    "mainState": mainState,
-    "redState": redState
-  }
-  var currStateKey:string = "mainState"
   currState = stateMap[currStateKey];
-  mainState.actors.push(new Rect(10,10,pressedKeys));
+  mainState.actors.push(new Rect(tileSize,tileSize,tileSize,pressedKeys));
+  currState.actors.push(new Box(tileSize*2,tileSize*3,tileSize));
   document.addEventListener('keydown', keyboardDown);
   document.addEventListener('keyup', keyboardUp);
   requestAnimationFrame(mainLoop);
