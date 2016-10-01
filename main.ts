@@ -4,8 +4,8 @@ interface vector {
 }
 
 interface actor {
-  velocity: vector;
-  movable: boolean;
+  velocity?: vector;
+  movable?: boolean;
   x:number;
   y:number;
   update(delta:number):void;
@@ -80,7 +80,7 @@ class State implements istate {
     for(var i:number = 0; i < this.actors.length; i++){
       this.actors[i].update(delta);
     }
-    if(this.level){
+    if(this.level && this.actors.length > 0){
       let level = this.level.mapData;
       for (let i = 0; i < level.length; i++) {
         for (let j = 0; j < level[i].length; j++) {
@@ -201,13 +201,24 @@ class Box implements actor {
   constructor(public x:number, public y:number, public size:number){}
   public velocity = {x:0,y:0}
   public movable = true;;
-  public update(delta:number):void {
-
-  }
+  public update(delta:number):void {}
   public draw(ctx):void{
     ctx.save();
     ctx.fillStyle = "purple"
     ctx.fillRect(this.x, this.y, this.size, this.size);
+    ctx.restore();
+  }
+}
+
+class GameText implements actor {
+  constructor(public x:number, public y:number, public text:string){}
+  public update(delta:number):void {}
+  public font:string = "20px Georgia";
+  public draw(ctx):void{
+    ctx.save();
+    ctx.fillStyle = "white"
+    ctx.font="20px Georgia";
+    ctx.fillText(this.text,this.x,this.y);
     ctx.restore();
   }
 }
@@ -238,12 +249,12 @@ window.onload = () => {
                   [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]];
   var level = new Map(tileSize, levelData);
   var mainState = new State(ctx,pressedKeys,level);
-  var redState = new State(ctx,pressedKeys);
+  var startState = new State(ctx,pressedKeys);
   var stateMap:Object = {
+    "startState": startState,
     "mainState": mainState,
-    "redState": redState
   }
-  var currStateKey:string = "mainState";
+  var currStateKey:string = "startState";
   var keyboardDown = (event:KeyboardEvent) => {
     pressedKeys[event.keyCode] = true;
   }
@@ -259,15 +270,11 @@ window.onload = () => {
       requestAnimationFrame(mainLoop);
     } else if(currState.readyToChange){
       currState.readyToChange = false;
-      if(currStateKey === "mainState"){
-        currStateKey = "redState";
-        currState = stateMap[currStateKey];
-        currState.actors.push(new Rect(tileSize,tileSize,tileSize,pressedKeys,"red"));
-        currState.actors.push(new Box(tileSize*2,tileSize*1,tileSize));
-      } else {
+      if(currStateKey === "startState" || currStateKey === "mainState"){
         currStateKey = "mainState";
         currState = stateMap[currStateKey];
         currState.actors.push(new Rect(tileSize,tileSize,tileSize,pressedKeys,"white"));
+        currState.actors.push(new Box(tileSize*2,tileSize*3,tileSize));
       }
       requestAnimationFrame(mainLoop);
     } else {
@@ -289,8 +296,7 @@ window.onload = () => {
   }
 
   currState = stateMap[currStateKey];
-  mainState.actors.push(new Rect(tileSize,tileSize,tileSize,pressedKeys));
-  currState.actors.push(new Box(tileSize*2,tileSize*3,tileSize));
+  currState.actors.push(new GameText(60,120,"Press Space To Start"));
   document.addEventListener('keydown', keyboardDown);
   document.addEventListener('keyup', keyboardUp);
   requestAnimationFrame(mainLoop);
