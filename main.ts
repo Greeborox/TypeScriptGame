@@ -5,11 +5,12 @@ interface vector {
 
 interface actor {
   velocity?: vector;
-  movable?: boolean;
   x:number;
-  y:number;
+  y: number;
+  isPushable?(direction: string, mapData: number[][], actors: actor[]): boolean;
+  push?(direction: string): void;
   update(delta:number):void;
-  draw(ctx:CanvasRenderingContext2D):void;
+  draw(ctx: CanvasRenderingContext2D): void;
 }
 
 interface istate {
@@ -37,87 +38,12 @@ class State implements istate {
   public actors:actor[] = []
   public create() {
     console.log("state created");
-    console.log(this.level);
     this.created = true;
     this.nextState = false;
-  }
-  private checkCollision(r1,r2){
-    let r1centerx = r1.x+(r1.size/2);
-    let r1centery = r1.y+(r1.size/2);
-    let r2centerx = r2.x+(r2.size/2);
-    let r2centery = r2.y+(r2.size/2);
-    var vx = r1centerx - r2centerx;
-    var vy = r1centery - r2centery;
-    var combinedHalfWidths = r1.size/2 + r2.size/2;
-    var combinedHalfHeights = r1.size/2 + r2.size/2;
-    if(Math.abs(vx) < combinedHalfWidths){
-      if(Math.abs(vy) < combinedHalfHeights){
-        var overlapX = combinedHalfWidths - Math.abs(vx);
-        var overlapY = combinedHalfHeights - Math.abs(vy);
-        if(overlapX >= overlapY) {
-          if(vy > 0) {
-            r1.y = r1.y + overlapY;
-          } else {
-            r1.y = r1.y - overlapY;
-          }
-        } else {
-          if(vx > 0) {
-            r1.x = r1.x + overlapX;
-          } else {
-            r1.x = r1.x - overlapX;
-          }
-        }
-      }
-    }
-  }
-  public checkOverlap(entity1,entity2){
-    return !(entity1.x + entity1.size -1 < entity2.x ||
-               entity2.x + entity2.size -1 < entity1.x ||
-               entity1.y + entity1.size -1 < entity2.y ||
-               entity2.y + entity2.size -1 < entity1.y);
   }
   public update(delta:number) {
     for(var i:number = 0; i < this.actors.length; i++){
       this.actors[i].update(delta);
-    }
-    if(this.level && this.actors.length > 0){
-      let level = this.level.mapData;
-      for (let i = 0; i < level.length; i++) {
-        for (let j = 0; j < level[i].length; j++) {
-          if(level[i][j]){
-            var wallColl = {
-              size: 20,
-              x: 20*j,
-              y: 20*i,
-            }
-            this.checkCollision(this.actors[0],wallColl)
-            if(this.actors.length > 1){
-              for (let k = 1; k < this.actors.length; k++) {
-                if(this.checkOverlap(this.actors[k], wallColl)){
-                  if(this.checkOverlap(this.actors[k], this.actors[0])){
-                    this.actors[k].movable = false;
-                  } else {
-                    this.actors[k].movable = true;
-                  }
-                }
-                this.checkCollision(this.actors[k], wallColl);
-              }
-            }
-          }
-        }
-      }
-      if(this.actors.length > 1){
-        for (let i = 1; i < this.actors.length; i++) {
-          if(this.actors[i].movable){
-            this.checkCollision(this.actors[i], this.actors[0]);
-          } else {
-            this.checkCollision(this.actors[0], this.actors[i]);
-          }
-          if(!this.checkOverlap(this.actors[i], this.actors[0])){
-            this.actors[i].movable = true;
-          }
-        }
-      }
     }
     if(this.nextState){
       this.cleanUp();
@@ -129,6 +55,9 @@ class State implements istate {
       }
     } else {
       this.spacePressed = false;
+    }
+    if (this.actors.length > 1 && this.checkIfWon()) {
+        this.nextState = true;
     }
   }
   public draw() {
@@ -149,6 +78,15 @@ class State implements istate {
     this.readyToChange = true;
     this.nextState = false;
   }
+  public checkIfWon() {
+      var gameWon = true;
+      for (var i = 1; i < this.actors.length; i++) {
+          if (this.actors[i].x < 320) {
+              gameWon = false;
+          }
+      }
+      return gameWon;
+  }
 }
 
 class Map implements map {
@@ -167,33 +105,143 @@ class Map implements map {
   }
 }
 
-class Rect implements actor {
-  constructor(public x:number, public y:number, public size:number, public keyObj:Object, private color:string = "white"){}
+class Player implements actor {
+    constructor(public x: number, public y: number, public size: number, public keyObj: Object, private color: string = "white", public mapData: number[][], private actors:actor[], public direction: string = "") { }
   public velocity = {x:0,y:0}
   public movable = true;
-  public update(delta:number):void {
-    if(this.keyObj['39']){
-      this.velocity.x = 0.08;
-    } else if (this.keyObj['37']) {
-      this.velocity.x = -0.08;
-    } else {
-      this.velocity.x = 0;
-    };
-    if(this.keyObj['40']){
-      this.velocity.y = 0.08;
-    } else if (this.keyObj['38']) {
-      this.velocity.y = -0.08;
-    } else {
-      this.velocity.y = 0;
-    };
-    this.x += this.velocity.x * delta;
+  public walking = false;
+  public dest = { x: 0, y: 0 };
+  public originalPos = { x: 0, y: 0 };
+  public update(delta: number): void {
+      if (this.keyObj['39'] && !this.walking) {
+          this.direction = "right";
+          if (this.checkWalls() && this.checkBoxes()) {
+            this.velocity.x = 0.08;
+            this.walking = true;
+            this.dest.x = this.x + 20;
+            this.dest.y = this.y;
+          }
+        
+      } else if (this.keyObj['37'] && !this.walking) {
+          this.direction = "left";
+          if (this.checkWalls() && this.checkBoxes()) {
+              this.velocity.x = -0.08;
+              this.walking = true;
+              this.dest.x = this.x - 20;
+              this.dest.y = this.y;
+          }
+      } else if (this.keyObj['40'] && !this.walking) {
+              this.direction = "down";
+              if (this.checkWalls() && this.checkBoxes()) {
+                  this.velocity.y = 0.08;
+                  this.walking = true;
+                  this.dest.x = this.x;
+                  this.dest.y = this.y + 20;
+              }
+      } else if (this.keyObj['38'] && !this.walking) {
+              this.direction = "up";
+              if (this.checkWalls() && this.checkBoxes()) {
+                  this.velocity.y = -0.08;
+                  this.walking = true;
+                  this.dest.x = this.x;
+                  this.dest.y = this.y - 20;
+              }
+    } 
+    this.x += this.velocity.x * delta; 
     this.y += this.velocity.y * delta;
+    if (this.walking) {
+        switch (this.direction) {
+            case "up":
+                if (this.y <= this.dest.y) {
+                    this.walking = false;
+                    this.y = this.dest.y;
+                    this.velocity.x = 0;
+                    this.velocity.y = 0;
+                }
+                break;
+            case "down":
+                if (this.y >= this.dest.y) {
+                    this.walking = false;
+                    this.y = this.dest.y;
+                    this.velocity.x = 0;
+                    this.velocity.y = 0;
+                }
+                break;
+            case "left":
+                if (this.x <= this.dest.x) {
+                    this.walking = false;
+                    this.x = this.dest.x;
+                    this.velocity.x = 0;
+                    this.velocity.y = 0;
+                }
+                break;
+            case "right":
+                if (this.x >= this.dest.x) {
+                    this.walking = false;
+                    this.x = this.dest.x;
+                    this.velocity.x = 0;
+                    this.velocity.y = 0;
+                }
+                break;
+        }
+    }
   }
   public draw(ctx):void{
     ctx.save();
     ctx.fillStyle = this.color;
     ctx.fillRect(this.x, this.y, this.size, this.size);
     ctx.restore();
+  }
+  private checkWalls() {
+      let currXpos = this.x / 20;
+      let cuttYpos = this.y / 20;
+      switch (this.direction) {
+          case "up":
+              cuttYpos -= 1;
+              break
+          case "down":
+              cuttYpos += 1;
+              break
+          case "left":
+              currXpos -= 1;
+              break
+          case "right":
+              currXpos += 1;
+              break
+      }
+      if (this.mapData[cuttYpos][currXpos]) {
+          return false;
+      } else {
+          return true;
+      }
+  }
+  private checkBoxes() {
+      let currXpos = this.x;
+      let currYpos = this.y;
+      switch (this.direction) {
+          case "up":
+              currYpos -= 20;
+              break
+          case "down":
+              currYpos += 20;
+              break
+          case "left":
+              currXpos -= 20;
+              break
+          case "right":
+              currXpos += 20;
+              break
+      }
+      for (var i = 1; i < this.actors.length; i++) {
+          if (currXpos === this.actors[i].x && currYpos === this.actors[i].y) {
+              if (this.actors[i].isPushable(this.direction, this.mapData, this.actors)) {
+                  this.actors[i].push(this.direction);
+              } else {
+                  return false;
+              }
+          }
+      }
+      return true;
   }
 }
 
@@ -208,6 +256,64 @@ class Box implements actor {
     ctx.fillRect(this.x, this.y, this.size, this.size);
     ctx.restore();
   }
+  public isPushable(direction, map, actors) {
+      let currXpos = this.x / 20;
+      let currYpos = this.y / 20;
+      let currXwhole = this.x;
+      let currYwhole = this.y
+      switch (direction) {
+          case "up":
+              currYpos -= 1;
+              currYwhole -= 20;
+              break
+          case "down":
+              currYpos += 1;
+              currYwhole += 20;
+              break
+          case "left":
+              currXpos -= 1;
+              currXwhole -= 20;
+              break
+          case "right":
+              currXpos += 1;
+              currXwhole += 20;
+              break
+      }
+      if (map[currYpos][currXpos]) {
+          return false;
+      } else {
+          for (var i = 1; i < actors.length; i++) {
+              if (currXwhole === actors[i].x && currYwhole === actors[i].y) {
+                  return false;
+              }
+          }
+      }     
+      return true;
+  }
+  push(direction) {
+      switch (direction) {
+          case "up":
+              this.y -= 20;
+              break
+          case "down":
+              this.y += 20;
+              break
+          case "left":
+              this.x -= 20;
+              break
+          case "right":
+              this.x += 20;
+              break
+      }
+      console.log(this.x);
+  }
+}
+
+class Wall implements actor {
+    constructor(public x: number, public y: number, public size: number) { }
+    public velocity = { x: 0, y: 0 }
+    public update(delta: number): void { }
+    public draw(ctx): void { }
 }
 
 class GameText implements actor {
@@ -232,21 +338,17 @@ window.onload = () => {
   var timestep:number = 1000/60;
   var currState:State;
   var pressedKeys:Object = {};
-  var levelData =[[1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,1,1,1,1,1,0,0,0,1,1,1,1,1,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
-                  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]];
+  var levelData =[[1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                  [1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                  [1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                  [1, 1, 1, 1, 1, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                  [1, 1, 1, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                  [1, 1, 1, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                  [1, 0, 0, 0, 1, 0, 1, 1, 0, 1, 1, 1, 1, 1, 0, 0, 0, 0, 1],
+                  [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1],
+                  [1, 1, 1, 1, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 0, 0, 0, 0, 1],
+                  [1, 1, 1, 1, 1, 0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+                  [1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1]];
   var level = new Map(tileSize, levelData);
   var mainState = new State(ctx,pressedKeys,level);
   var startState = new State(ctx,pressedKeys);
@@ -273,13 +375,18 @@ window.onload = () => {
       if(currStateKey === "startState" || currStateKey === "mainState"){
         currStateKey = "mainState";
         currState = stateMap[currStateKey];
-        currState.actors.push(new Rect(tileSize,tileSize,tileSize,pressedKeys,"white"));
-        currState.actors.push(new Box(tileSize*2,tileSize*3,tileSize));
+        currState.actors.push(new Player(tileSize * 11, tileSize * 8, tileSize, pressedKeys, "white", levelData, currState.actors));
+        currState.actors.push(new Box(tileSize * 2, tileSize * 7, tileSize));
+        currState.actors.push(new Box(tileSize * 5, tileSize * 2, tileSize));
+        currState.actors.push(new Box(tileSize * 5, tileSize * 4, tileSize));
+        currState.actors.push(new Box(tileSize * 5, tileSize * 8, tileSize));
+        currState.actors.push(new Box(tileSize * 7, tileSize * 3, tileSize));
+        currState.actors.push(new Box(tileSize * 7, tileSize * 4, tileSize));
       }
       requestAnimationFrame(mainLoop);
     } else {
       var numUpdateSteps:number = 0;
-      ctx.clearRect(0, 0, 300, 300);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
       delta += timestamp - lastFrameTimeMs;
       lastFrameTimeMs = timestamp;
       while (delta >= timestep) {
@@ -296,7 +403,7 @@ window.onload = () => {
   }
 
   currState = stateMap[currStateKey];
-  currState.actors.push(new GameText(60,120,"Press Space To Start"));
+  currState.actors.push(new GameText(100,120,"Press Space To Start"));
   document.addEventListener('keydown', keyboardDown);
   document.addEventListener('keyup', keyboardUp);
   requestAnimationFrame(mainLoop);

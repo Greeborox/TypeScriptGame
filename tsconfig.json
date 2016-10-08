@@ -1,4 +1,6 @@
 {
+  "buildOnSave": true,
+  "compileOnSave": true,
   "compilerOptions": {
     "target": "es5",
     "module": "commonjs",
@@ -6,7 +8,5 @@
     "noImplicitAny": false,
     "removeComments": true,
     "noLib": false
-  },
-  "compileOnSave": true,
-  "buildOnSave": true
+  }
 }
