@@ -7,10 +7,10 @@ interface actor {
   velocity?: vector;
   x:number;
   y: number;
-  isPushable?(direction: string, mapData: number[][], actors: actor[]): boolean;
-  push?(direction: string): void;
   update(delta:number):void;
   draw(ctx: CanvasRenderingContext2D): void;
+  isPushable?(direction: string, mapData: number[][], actors: actor[]): boolean;
+  push?(direction: string): void;
 }
 
 interface istate {
@@ -79,7 +79,7 @@ class State implements istate {
     this.nextState = false;
   }
   public checkIfWon() {
-      var gameWon = true;
+      var gameWon:boolean = true;
       for (var i = 1; i < this.actors.length; i++) {
           if (this.actors[i].x < 320) {
               gameWon = false;
@@ -106,7 +106,7 @@ class Map implements map {
 }
 
 class Player implements actor {
-    constructor(public x: number, public y: number, public size: number, public keyObj: Object, private color: string = "white", public mapData: number[][], private actors:actor[], public direction: string = "") { }
+  constructor(public x: number, public y: number, public size: number, public keyObj: Object, private color: string = "white", public mapData: number[][], private actors:actor[], public direction: string = "") { }
   public velocity = {x:0,y:0}
   public movable = true;
   public walking = false;
@@ -247,7 +247,6 @@ class Player implements actor {
 
 class Box implements actor {
   constructor(public x:number, public y:number, public size:number){}
-  public velocity = {x:0,y:0}
   public movable = true;;
   public update(delta:number):void {}
   public draw(ctx):void{
@@ -305,15 +304,7 @@ class Box implements actor {
               this.x += 20;
               break
       }
-      console.log(this.x);
   }
-}
-
-class Wall implements actor {
-    constructor(public x: number, public y: number, public size: number) { }
-    public velocity = { x: 0, y: 0 }
-    public update(delta: number): void { }
-    public draw(ctx): void { }
 }
 
 class GameText implements actor {
